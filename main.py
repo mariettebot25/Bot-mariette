@@ -1,53 +1,53 @@
-import yfinance as yf, time, requests
+from flask import Flask
+from threading import Thread
+import yfinance as yf, time, requests, os
 from datetime import datetime
 import pytz
 
-TOKEN = "8670091118:AAEGhBCpx4G4NEcWKUphp-YrGoHxa1KJ-3w"
+TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = "5563560146"
-PAIRES = ["EURUSD=X", "GBPUSD=X", "EURJPY=X", "GBPJPY=X"]
+PAIRES = ["EURUSD=X","GBPUSD=X","EURJPY=X","EURGBP=X","AUDUSD=X"]
 
-def heure_autorisee():
+app = Flask('')
+@app.route('/')
+def home():
+    return "Bot Mariette en ligne !"
+def run():
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+Thread(target=run).start()
+
+def heure_autoriser():
     tz = pytz.timezone('Africa/Abidjan')
-    now = datetime.now(tz)
-    h = now.hour + now.minute/60.0
-    return (8 <= h < 12) or (14.5 <= h < 19)
+    maintenant = datetime.now(tz)
+    h = maintenant.hour + maintenant.minute/60
+    return (8 <= h < 12) or (14.5 <= h < 17)
 
 def envoyer(msg):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     try:
-        requests.post(url, data={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"})
-    except: pass
+        requests.post(URL, data={"chat_id": CHAT_ID, "text": msg})
+    except:
+        pass
 
-def analyse(paire):
+def analyser(paire):
     try:
-        df = yf.download(paire, period="1d", interval="5m", progress=False)
-        if len(df) < 30: return f"⚪ {paire.replace('=X','')}: Attente"
-        close = df['Close']
-        ema9 = close.ewm(span=9).mean().iloc[-1]
-        ema21 = close.ewm(span=21).mean().iloc[-1]
-        delta = close.diff()
-        gain = delta.where(delta>0,0).rolling(14).mean().iloc[-1]
-        loss = -delta.where(delta<0,0).rolling(14).mean().iloc[-1]
-        rsi = 100 - (100/(1+ (gain/loss if loss!=0 else 1)))
-        nom = paire.replace('=X','')
-        if rsi < 40 and ema9 > ema21:
-            return f"🟢 ACHAT {nom} | 2-3min | RSI {rsi:.0f}"
-        elif rsi > 60 and ema9 < ema21:
-            return f"🔴 VENTE {nom} | 2-3min | RSI {rsi:.0f}"
+        df = yf.download(paire, period="2d", interval="15m", progress=False)
+        if len(df) < 30:
+            return f"⚪ {paire}: pas assez de donnees"
+        dernier = df['Close'].iloc[-1]
+        avant = df['Close'].iloc[-2]
+        if dernier > avant:
+            return f"🟢 {paire}: ACHAT {dernier:.5f}"
         else:
-            return f"⚪ {nom}: Pas de signal - RSI {rsi:.0f}"
-    except: return f"⚪ {paire}: erreur"
-
-envoyer("✅ Bot Mariette lance ! Signaux toutes les 10min 08h-12h et 14h30-19h Abidjan")
+            return f"🔴 {paire}: VENTE {dernier:.5f}"
+    except:
+        return f"⚫ {paire}: erreur"
 
 while True:
-    if heure_autorisee():
-        tz = pytz.timezone('Africa/Abidjan')
-        heure = datetime.now(tz).strftime('%H:%M')
-        msg = f"📊 Signaux {heure} Abidjan\n\n"
-        for p in PAIRES:
-            msg += analyse(p) + "\n"
-        envoyer(msg)
-        time.sleep(600)
+    if heure_autoriser():
+        for paire in PAIRES:
+            envoyer(analyser(paire))
+            time.sleep(2)
+        time.sleep(3600)
     else:
         time.sleep(300)
