@@ -39,13 +39,13 @@ def analyser(paire):
         df = yf.download(paire, period="2d", interval="15m", progress=False)
         if len(df) < 30:
             return f"{paire}: pas assez de donnees"
-        dernier = df['Close'].iloc[-1]
-        avant = df['Close'].iloc[-2]
+        dernier = float(df['Close'].iloc[-1])
+        avant = float(df['Close'].iloc[-2])
         if dernier > avant:
-            return f"ACHAT {paire} {dernier:.5f}"
+            return f"🟢 ACHAT {paire} {dernier:.5f}"
         else:
-            return f"VENTE {paire} {dernier:.5f}"
-    except:
+            return f"🔴 VENTE {paire} {dernier:.5f}"
+    except Exception as e:
         return f"{paire}: erreur"
 
 while True:
