@@ -4,17 +4,19 @@ import time, requests, os
 
 TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = "5563560146"
-PAIRES = ["EURUSD=X","GBPUSD=X","EURJPY=X","EURGBP=X","AUDUSD=X","USDJPY=X","GBPJPY=X","BTC-USD"]
+PAIRES = ["EURUSD=X","GBPUSD=X","EURJPY=X","EURGBP=X","AUDUSD=X","USDJPY=X","GBPJPY=X"]
 
 app = Flask('')
 @app.route('/')
-def home(): return "Bot Mariette FINAL OK"
+def home(): return "Bot Mariette FINAL OK - SANS BTC"
 def run(): app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
 Thread(target=run).start()
 
 def envoyer(msg):
-    try: requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": msg}, timeout=10)
-    except: pass
+    try:
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": msg}, timeout=10)
+    except:
+        pass
 
 def analyser_1min(paire):
     try:
@@ -42,10 +44,10 @@ def analyser_1min(paire):
         if ema9 < ema21 and 32 < rsi < 45 and dernier < avant:
             return f"🔴 VENTE {nom}\n⏰ 1 MINUTE\n📉 RSI {rsi:.0f} -> ENTRE"
         return None
-    except: return None
+    except:
+        return None
 
-envoyer("✅ BOT REGLÉ ANTI-SPAM 10 MIN\nMaintenant 1 signal max / 10min par paire")
-
+envoyer("✅ BOT REGLÉ ANTI-SPAM 10 MIN\nMaintenant 1 signal max / 10min par paire - BTC SUPPRIMÉ")
 dernier_signal={}
 while True:
     for paire in PAIRES:
@@ -54,6 +56,6 @@ while True:
             if paire not in dernier_signal or time.time()-dernier_signal[paire] > 600: # 10 minutes
                 envoyer(sig)
                 dernier_signal[paire]=time.time()
-                break # on envoie 1 seul puis on attend 1 min
+            break # on envoie 1 seul puis on attend 1 min
         time.sleep(1)
     time.sleep(60)
