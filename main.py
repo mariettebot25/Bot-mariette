@@ -4,17 +4,18 @@ import time, requests, os
 
 TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = "5563560146"
-# 8 paires au total
+# 8 paires pour Pocket Option 1 min
 PAIRES = ["EURUSD=X","GBPUSD=X","EURJPY=X","EURGBP=X","AUDUSD=X","USDJPY=X","GBPJPY=X","BTC-USD"]
 
 app = Flask('')
 @app.route('/')
-def home(): return "Bot 1min Mariette 8 paires ON"
+def home(): return "Bot Mariette 1min FINAL ON"
 def run(): app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
 Thread(target=run).start()
 
 def envoyer(msg):
-    try: requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": msg}, timeout=10)
+    try:
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": msg}, timeout=10)
     except: pass
 
 def analyser_1min(paire):
@@ -37,27 +38,38 @@ def analyser_1min(paire):
             d = closes[-i] - closes[-i-1]
             if d > 0: gains += d
             else: pertes += abs(d)
-        rsi = 100 - (100/(1+gains/pertes)) if pertes !=0 else 70
+        rsi = 100 - (100/(1+gains/pertes)) if pertes !=0 else 1)
 
         dernier = closes[-1]; avant = closes[-2]
         nom = paire.replace("=X","").replace("-USD","/USD")
 
-        # Si marché BON -> on envoie
-        if ema9 > ema21 and rsi > 50 and rsi < 70 and dernier > avant:
-            return f"🟢 ACHAT {nom}\n⏰ 1 MINUTE\n📈 Marché BON - EMA9>EMA21 RSI {rsi:.0f}\n👉 ENTRE MAINTENANT"
+        # Signal ACHAT
+        if ema9 > ema21 and rsi > 52 and rsi < 70 and dernier > avant:
+            return f"🟢 ACHAT {nom}\n⏰ EXPIRATION 1 MINUTE\n📈 Marché BON EMA9>EMA21 RSI {rsi:.0f}\n👉 ENTRE MAINTENANT"
 
-        if ema9 < ema21 and rsi < 50 and rsi > 30 and dernier < avant:
-            return f"🔴 VENTE {nom}\n⏰ 1 MINUTE\n📉 Marché BON - EMA9<EMA21 RSI {rsi:.0f}\n👉 ENTRE MAINTENANT"
+        # Signal VENTE
+        if ema9 < ema21 and rsi < 48 and rsi > 30 and dernier < avant:
+            return f"🔴 VENTE {nom}\n⏰ EXPIRATION 1 MINUTE\n📉 Marché BON EMA9<EMA21 RSI {rsi:.0f}\n👉 ENTRE MAINTENANT"
         
         return None
     except: return None
 
-envoyer("✅ BOT 8 PAIRES LANCÉ (1 MIN)\nEURUSD, GBPUSD, EURJPY, EURGBP, AUDUSD, USDJPY, GBPJPY, BTC\nJe t'envoie un signal dès que UNE paire est bonne.")
+envoyer("✅ BOT FINAL 1 MIN LANCÉ\n8 paires: EURUSD GBPUSD EURJPY EURGBP AUDUSD USDJPY GBPJPY BTC\n1 signal max par minute avec anti-spam 5 min")
 
+# --- ANTI-SPAM ET ENVOI SÉPARÉ ---
+dernier_signal = {}
 while True:
+    meilleurs = []
     for paire in PAIRES:
         sig = analyser_1min(paire)
         if sig:
-            envoyer(sig)
-            time.sleep(1)
-    time.sleep(30)
+            if paire not in dernier_signal or time.time() - dernier_signal[paire] > 300:
+                meilleurs.append((paire, sig))
+        time.sleep(1)
+
+    if meilleurs:
+        paire, sig = meilleurs[0] # On envoie 1 seul par minute
+        envoyer(sig)
+        dernier_signal[paire] = time.time()
+
+    time.sleep(60)
