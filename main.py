@@ -1,72 +1,63 @@
 from flask import Flask
 from threading import Thread
-import time
-import requests
-import os
-from datetime import datetime
-import pytz
+import time, requests, os
 
 TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = "5563560146"
-PAIRES = ["EURUSD=X","GBPUSD=X","EURJPY=X","EURGBP=X","AUDUSD=X"]
+# 8 paires au total
+PAIRES = ["EURUSD=X","GBPUSD=X","EURJPY=X","EURGBP=X","AUDUSD=X","USDJPY=X","GBPJPY=X","BTC-USD"]
 
 app = Flask('')
 @app.route('/')
-def home():
-    return "Bot Mariette en ligne !"
-
-def run():
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+def home(): return "Bot 1min Mariette 8 paires ON"
+def run(): app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
 Thread(target=run).start()
 
-def heure_autoriser():
-    tz = pytz.timezone('Africa/Abidjan')
-    maintenant = datetime.now(tz)
-    h = maintenant.hour + maintenant.minute/60
-    return (8 <= h < 12) or (14.5 <= h < 17)
-
 def envoyer(msg):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    try:
-        requests.post(url, data={"chat_id": CHAT_ID, "text": msg}, timeout=10)
-    except:
-        pass
+    try: requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": msg}, timeout=10)
+    except: pass
 
-def analyser(paire):
+def analyser_1min(paire):
     try:
-        # Nouvelle méthode qui marche sur Render (pas yfinance)
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{paire}?interval=15m&range=2d"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        r = requests.get(url, headers=headers, timeout=15)
-        data = r.json()
-        
-        result = data['chart']['result'][0]
-        closes = result['indicators']['quote'][0]['close']
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{paire}?interval=1m&range=1d"
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15).json()
+        closes = r['chart']['result'][0]['indicators']['quote'][0]['close']
         closes = [c for c in closes if c is not None]
-        
-        if len(closes) < 2:
-            return f"{paire}: pas assez de donnees"
-            
-        dernier = float(closes[-1])
-        avant = float(closes[-2])
-        
-        if dernier > avant:
-            return f"🟢 ACHAT {paire} {dernier:.5f}"
-        else:
-            return f"🔴 VENTE {paire} {dernier:.5f}"
-            
-    except Exception as e:
-        print(f"Erreur {paire}: {e}")
-        return f"{paire}: erreur"
+        if len(closes) < 50: return None
 
-# Envoie un message de démarrage
-envoyer("✅ Bot Mariette redémarré et prêt !")
+        def ema(data, p):
+            k = 2/(p+1); e = data[0]
+            for c in data[1:]: e = c*k + e*(1-k)
+            return e
+        ema9 = ema(closes[-21:], 9)
+        ema21 = ema(closes[-21:], 21)
+
+        gains = pertes = 0
+        for i in range(1, 15):
+            d = closes[-i] - closes[-i-1]
+            if d > 0: gains += d
+            else: pertes += abs(d)
+        rsi = 100 - (100/(1+gains/pertes)) if pertes !=0 else 70
+
+        dernier = closes[-1]; avant = closes[-2]
+        nom = paire.replace("=X","").replace("-USD","/USD")
+
+        # Si marché BON -> on envoie
+        if ema9 > ema21 and rsi > 50 and rsi < 70 and dernier > avant:
+            return f"🟢 ACHAT {nom}\n⏰ 1 MINUTE\n📈 Marché BON - EMA9>EMA21 RSI {rsi:.0f}\n👉 ENTRE MAINTENANT"
+
+        if ema9 < ema21 and rsi < 50 and rsi > 30 and dernier < avant:
+            return f"🔴 VENTE {nom}\n⏰ 1 MINUTE\n📉 Marché BON - EMA9<EMA21 RSI {rsi:.0f}\n👉 ENTRE MAINTENANT"
+        
+        return None
+    except: return None
+
+envoyer("✅ BOT 8 PAIRES LANCÉ (1 MIN)\nEURUSD, GBPUSD, EURJPY, EURGBP, AUDUSD, USDJPY, GBPJPY, BTC\nJe t'envoie un signal dès que UNE paire est bonne.")
 
 while True:
-    if heure_autoriser():
-        for paire in PAIRES:
-            envoyer(analyser(paire))
-            time.sleep(2)
-        time.sleep(3600) # attend 1h
-    else:
-        time.sleep(300) # attend 5 min hors horaires
+    for paire in PAIRES:
+        sig = analyser_1min(paire)
+        if sig:
+            envoyer(sig)
+            time.sleep(1)
+    time.sleep(30)
