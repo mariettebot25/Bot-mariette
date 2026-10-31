@@ -1,6 +1,5 @@
 from flask import Flask
 from threading import Thread
-import yfinance as yf
 import time
 import requests
 import os
@@ -18,7 +17,6 @@ def home():
 
 def run():
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
-
 Thread(target=run).start()
 
 def heure_autoriser():
@@ -30,29 +28,45 @@ def heure_autoriser():
 def envoyer(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     try:
-        requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+        requests.post(url, data={"chat_id": CHAT_ID, "text": msg}, timeout=10)
     except:
         pass
 
 def analyser(paire):
     try:
-        df = yf.download(paire, period="2d", interval="15m", progress=False)
-        if len(df) < 30:
+        # Nouvelle méthode qui marche sur Render (pas yfinance)
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{paire}?interval=15m&range=2d"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        r = requests.get(url, headers=headers, timeout=15)
+        data = r.json()
+        
+        result = data['chart']['result'][0]
+        closes = result['indicators']['quote'][0]['close']
+        closes = [c for c in closes if c is not None]
+        
+        if len(closes) < 2:
             return f"{paire}: pas assez de donnees"
-        dernier = float(df['Close'].iloc[-1])
-        avant = float(df['Close'].iloc[-2])
+            
+        dernier = float(closes[-1])
+        avant = float(closes[-2])
+        
         if dernier > avant:
             return f"🟢 ACHAT {paire} {dernier:.5f}"
         else:
             return f"🔴 VENTE {paire} {dernier:.5f}"
+            
     except Exception as e:
+        print(f"Erreur {paire}: {e}")
         return f"{paire}: erreur"
+
+# Envoie un message de démarrage
+envoyer("✅ Bot Mariette redémarré et prêt !")
 
 while True:
     if heure_autoriser():
         for paire in PAIRES:
             envoyer(analyser(paire))
             time.sleep(2)
-        time.sleep(3600)
+        time.sleep(3600) # attend 1h
     else:
-        time.sleep(300)
+        time.sleep(300) # attend 5 min hors horaires
